@@ -3,7 +3,7 @@
 Drop a document in, ask it questions, and get answers whose citations open the
 passage they name.
 
-Embedding happens **on the machine**, through `MLXEmbedders` — the documents
+Embedding happens **on the machine**, through `MLXEmbedders` - the documents
 never leave it. Generation is answered by a [dAI](https://github.com/djsincla/dAI)
 gateway, which is itself a fleet of local machines, so the same holds there.
 
@@ -28,7 +28,7 @@ flowchart TB
 | **[dAI](https://github.com/djsincla/dAI)** | The fleet behind the answers: idle Apple Silicon machines, centrally scheduled, serving models over an OpenAI-compatible gateway. Nothing leaves the building. |
 | **[mlx-swift-examples](https://github.com/djsincla/mlx-swift-examples)** | The fork both depend on. `MLXEmbedders` here, `MLXLLM` there, one pinned revision for both. |
 
-Without a gateway configured the app still ingests, embeds and searches — that
+Without a gateway configured the app still ingests, embeds and searches - that
 part is entirely local. It is generation that needs the fleet.
 
 ## What it does
@@ -46,7 +46,7 @@ part is entirely local. It is generation that needs the fleet.
     swift build
 
 The app bundle is assembled by `packaging/make-app.sh`, which wraps the built
-executable — a menu-bar-free document app needs an `Info.plist`, and SwiftPM
+executable - a menu-bar-free document app needs an `Info.plist`, and SwiftPM
 produces a bare binary.
 
 Command-line tools alongside the app: `notebook-ingest` (one document, with
@@ -71,7 +71,7 @@ facts mean.
 
 ## Licence
 
-Apache License 2.0, © 2026 Dwayne Sinclair — see [LICENSE](LICENSE) and
+Apache License 2.0, © 2026 Dwayne Sinclair - see [LICENSE](LICENSE) and
 [NOTICE](NOTICE). The pinned fork is MIT and is not covered by that notice.
 
 Model weights are not in this repository and carry their own licences.

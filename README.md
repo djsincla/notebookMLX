@@ -39,6 +39,12 @@ copies at different revisions could pool or normalise differently, and an index
 built by one would be silently incomparable with a query from the other. That
 is not a failure anything reports, so `Tests` asserts the two agree.
 
+## Security
+
+It parses documents it did not write and holds a gateway key in the Keychain.
+[`SECURITY.md`](SECURITY.md) says how to report something, and what those two
+facts mean.
+
 ## Licence
 
 Apache License 2.0, © 2026 Dwayne Sinclair — see [LICENSE](LICENSE) and

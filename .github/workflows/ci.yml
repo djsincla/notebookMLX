@@ -1,0 +1,40 @@
+# What a pull request has to survive.
+#
+# macOS because the app is macOS: PDFKit, the Keychain and MLX are all platform
+# frameworks, and there is no Linux build to check.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: notebookMLX (83 tests)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      # Resolves github.com/djsincla/mlx-swift-examples at the revision
+      # Package.resolved names — the same revision dAI pins. ForkPinTests checks
+      # it against the one NOTICE claims, so a bump with a stale notice fails
+      # here rather than as an index that silently stops matching queries.
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - run: swift build
+
+      - run: swift test

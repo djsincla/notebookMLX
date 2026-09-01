@@ -1,3 +1,9 @@
 .build/
 .xcbuild/
-*.dainotebook/
+.swiftpm/
+*.xcuserdatad
+DerivedData/
+.DS_Store
+
+# Assembled by packaging/make-app.sh from a freshly built binary.
+*.app/

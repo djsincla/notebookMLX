@@ -1,0 +1,31 @@
+notebookMLX
+Copyright 2026 Dwayne Sinclair
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file.
+
+------------------------------------------------------------------------------
+
+This product depends on a modified copy of mlx-swift-examples
+(https://github.com/ml-explore/mlx-swift-examples), Copyright (c) 2024
+ml-explore, licensed under the MIT License.
+
+  Fork:      https://github.com/djsincla/mlx-swift-examples (dai-pipeline)
+  Pinned at: a3aba85274b152cc1dcd1964a8c2b28145ec2bd6
+  Forked at: 9bff95c (mlx-swift 0.29.1)
+
+It is resolved by SwiftPM rather than checked into this repository, so the
+source tree here does not redistribute it; a built application does. It remains
+under its original MIT licence and is NOT covered by the Apache License above.
+Parts of it carry further notices of their own, including "Copyright (c) 2024
+Apple Inc." on portions of MLXLMCommon; those are preserved as found.
+
+**The revision above must match the one dAI pins.** Both resolve this fork for
+MLXEmbedders. Two copies at different revisions could pool or normalise
+differently, and an index built by one would be silently incomparable with a
+query from the other.
+
+------------------------------------------------------------------------------
+
+This product also depends on CoreXLSX (https://github.com/CoreOffice/CoreXLSX),
+licensed under the Apache License 2.0, and on the Swift packages its
+Package.resolved names, each under its own licence.

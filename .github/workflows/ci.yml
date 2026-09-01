@@ -20,13 +20,18 @@ permissions:
 jobs:
   test:
     name: notebookMLX (83 tests)
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - name: Swift version
-        run: swift --version
+      # macos-26, not macos-15. Appearance.swift touches NSApp, which AppKit
+      # marks as main-actor-isolated; on Xcode 16.4 that is a strict-concurrency
+      # error and the build stops. The newer SDK is the one this is developed
+      # against, and naming it is more honest than weakening the code until an
+      # older SDK accepts it.
+      - name: Toolchain
+        run: swift --version && xcodebuild -version
 
       # Resolves github.com/djsincla/mlx-swift-examples at the revision
       # Package.resolved names — the same revision dAI pins. ForkPinTests checks

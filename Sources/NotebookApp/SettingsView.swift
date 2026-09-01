@@ -65,6 +65,30 @@ struct SettingsView: View {
                             .font(.caption).foregroundStyle(Palette.inkSecondary)
                     }
                 }
+                // Said here rather than left to be inferred from a hostname.
+                //
+                // Pointing this at a third-party endpoint works - it is an
+                // ordinary OpenAI client - and it changes the one property the
+                // rest of the app is built around. Embedding stays local
+                // whatever happens, so the documents never move; but the
+                // question and the passages retrieved for it are the request
+                // body, and they go wherever this points.
+                if !destination.looksLikeFleet {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Not a dAI fleet", systemImage: "exclamationmark.triangle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Palette.warning)
+                        Text("Your question and the passages retrieved for it are "
+                             + "sent to this endpoint. Documents and the index stay "
+                             + "on this machine either way.")
+                            .font(.caption).foregroundStyle(Palette.inkSecondary)
+                        if model.isEmpty {
+                            Text("A model must be named: only a dAI fleet can be "
+                                 + "asked without one.")
+                                .font(.caption).foregroundStyle(Palette.warning)
+                        }
+                    }
+                }
             }
             Section("Appearance") {
                 // A segmented picker rather than a toggle, because there are
@@ -124,6 +148,19 @@ struct SettingsView: View {
         .padding()
         .onAppear(perform: loadModels)
         .onDisappear(perform: save)
+    }
+
+    /// The endpoint as the fields currently stand, not as last saved.
+    ///
+    /// So the warning appears while somebody is typing a hostname, which is
+    /// when it is worth reading, rather than after they have closed the window.
+    /// An unparseable URL falls back to the local default and warns about
+    /// nothing: an empty field is somebody who has not decided yet.
+    private var destination: Gateway.Configuration {
+        let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Gateway.Configuration(
+            baseURL: URL(string: trimmed) ?? Gateway.Configuration.localhost.baseURL,
+            caCertificatePath: caPath.isEmpty ? nil : caPath)
     }
 
     /// How a model reads in the list.

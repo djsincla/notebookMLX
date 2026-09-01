@@ -31,6 +31,29 @@ flowchart TB
 Without a gateway configured the app still ingests, embeds and searches - that
 part is entirely local. It is generation that needs the fleet.
 
+## Pointing it somewhere other than dAI
+
+It is an ordinary OpenAI client: `POST /v1/chat/completions` with a bearer
+token, reading `choices[0].message.content`. So any OpenAI-compatible endpoint
+works - set the Gateway field in Settings and put the key in the same place.
+
+Two things to know before you do.
+
+- **Clear the CA certificate path.** With one set the app trusts *only* that
+  authority (`SecTrustSetAnchorCertificatesOnly`), which is right for a fleet
+  with its own CA and fails every handshake against a public host. Empty means
+  the system roots, which is what a public host needs.
+- **Name a model.** dAI serves whatever the group is pinned to, so the field is
+  optional there; everyone else answers a request without one with a 400. The
+  app now refuses before sending rather than passing that back as a refusal
+  that reads like a bad key.
+
+**Embedding stays local regardless** - there is no `/v1/embeddings` call
+anywhere in this app, and the index never leaves the machine. What travels is
+the question and the passages retrieval found for it. That is worth deciding
+deliberately rather than discovering, so Settings says so when the endpoint is
+not a fleet.
+
 ## What it does
 
 - Ingests PDF, plain text and xlsx. A spreadsheet is a zip of XML, which is why

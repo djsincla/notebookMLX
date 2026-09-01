@@ -21,10 +21,39 @@ public actor Gateway {
 
         public static let localhost = Configuration(
             baseURL: URL(string: "https://localhost:8452")!)
+
+        /// Whether this points at a dAI fleet rather than somebody else's API.
+        ///
+        /// The distinction is not cosmetic. Two things differ, and both fail
+        /// quietly otherwise: an OpenAI-compatible endpoint requires a `model`
+        /// where dAI serves whatever the group is pinned to, and asking one
+        /// sends the question *and the retrieved passages* off the machine,
+        /// which is the property local embedding exists to preserve.
+        ///
+        /// Two signals, either sufficient. A CA path is configured, which only
+        /// a private authority needs; or the host is not routable off the
+        /// premises. Neither is proof and neither needs to be: this decides
+        /// whether to insist on a model and whether to warn, not whether to
+        /// connect.
+        public var looksLikeFleet: Bool {
+            if let ca = caCertificatePath, !ca.isEmpty { return true }
+            guard let host = baseURL.host?.lowercased() else { return false }
+            if host == "localhost" || host == "::1" || host.hasSuffix(".local") {
+                return true
+            }
+            let octets = host.split(separator: ".").compactMap { Int($0) }
+            guard octets.count == 4,
+                  octets.allSatisfy({ (0...255).contains($0) }) else { return false }
+            if octets[0] == 127 || octets[0] == 10 { return true }
+            if octets[0] == 192 && octets[1] == 168 { return true }
+            if octets[0] == 172 && (16...31).contains(octets[1]) { return true }
+            return false
+        }
     }
 
     public enum Failure: Error, CustomStringConvertible, Equatable {
         case noCredential
+        case modelRequired
         case refused(status: Int, message: String)
         case unreachable(String)
         case malformed(String)
@@ -34,6 +63,14 @@ public actor Gateway {
             case .noCredential:
                 return "No API key. An operator mints one with "
                      + "POST /admin/v1/auth/keys."
+            case .modelRequired:
+                // dAI is the exception, not the rule: it serves whatever the
+                // group is pinned to, so the field is optional there and the
+                // habit of leaving it blank forms. Every other OpenAI
+                // compatible endpoint answers a request without one with a 400,
+                // which reads as the key being wrong.
+                return "This endpoint is not a dAI fleet, so it needs a model "
+                     + "named. Choose one in Settings."
             case let .refused(status, message):
                 return "The gateway refused (\(status)): \(message)"
             case let .unreachable(why):
@@ -115,6 +152,10 @@ public actor Gateway {
                        model: String? = nil,
                        maxTokens: Int = 800) async throws -> Answer {
         guard let key = credential(), !key.isEmpty else { throw Failure.noCredential }
+        // Refused here rather than discovered as a 400 from a stranger's API.
+        guard model != nil || configuration.looksLikeFleet else {
+            throw Failure.modelRequired
+        }
 
         var messages: [[String: Any]] = [["role": "system", "content": Self.system]]
         for turn in history {

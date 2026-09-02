@@ -35,7 +35,13 @@ part is entirely local. It is generation that needs the fleet.
 
 It is an ordinary OpenAI client: `POST /v1/chat/completions` with a bearer
 token, reading `choices[0].message.content`. So any OpenAI-compatible endpoint
-works - set the Gateway field in Settings and put the key in the same place.
+works - a dAI fleet, a private vLLM or LM Studio, OpenAI itself.
+
+**Destinations are saved by name.** Settings holds a list: add one, name it,
+give it a URL, a model and a key, and switch between them from the picker. Each
+keeps its own key in the Keychain, so moving between a fleet and a cloud
+endpoint is a menu choice rather than retyping three fields and losing whichever
+one you were not using. Deleting a destination forgets its key with it.
 
 Two things to know before you do.
 

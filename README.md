@@ -7,10 +7,10 @@ Embedding happens **on the machine**, through `MLXEmbedders` - the documents
 never leave it. Generation is answered by a [dAI](https://github.com/djsincla/dAI)
 gateway, which is itself a fleet of local machines, so the same holds there.
 
-## Three repositories, and how they fit
+## Three repositories
 
-**This one is the app.** It is a client of a dAI fleet, and it shares that
-project's fork of Apple's MLX examples rather than borrowing a copy.
+This one is the app. It is a client of a dAI fleet, and shares that project's
+fork of Apple's MLX examples.
 
 ```mermaid
 flowchart TB
@@ -37,28 +37,24 @@ It is an ordinary OpenAI client: `POST /v1/chat/completions` with a bearer
 token, reading `choices[0].message.content`. So any OpenAI-compatible endpoint
 works - a dAI fleet, a private vLLM or LM Studio, OpenAI itself.
 
-**Destinations are saved by name.** Settings holds a list: add one, name it,
-give it a URL, a model and a key, and switch between them from the picker. Each
-keeps its own key in the Keychain, so moving between a fleet and a cloud
-endpoint is a menu choice rather than retyping three fields and losing whichever
-one you were not using. Deleting a destination forgets its key with it.
+Destinations are saved by name. Settings holds a list: add one, give it a URL,
+a model and a key, and switch between them from the picker. Each keeps its own
+key in the Keychain. Deleting a destination removes its key too.
 
 Two things to know before you do.
 
-- **Clear the CA certificate path.** With one set the app trusts *only* that
+- Clear the CA certificate path. With one set the app trusts only that
   authority (`SecTrustSetAnchorCertificatesOnly`), which is right for a fleet
   with its own CA and fails every handshake against a public host. Empty means
-  the system roots, which is what a public host needs.
-- **Name a model.** dAI serves whatever the group is pinned to, so the field is
-  optional there; everyone else answers a request without one with a 400. The
-  app now refuses before sending rather than passing that back as a refusal
-  that reads like a bad key.
+  the system roots.
+- Name a model. dAI serves whatever the group is pinned to, so the field is
+  optional there; other servers return a 400 without one. The app refuses
+  before sending rather than passing that back as a refusal that looks like a
+  bad key.
 
-**Embedding stays local regardless** - there is no `/v1/embeddings` call
-anywhere in this app, and the index never leaves the machine. What travels is
-the question and the passages retrieval found for it. That is worth deciding
-deliberately rather than discovering, so Settings says so when the endpoint is
-not a fleet.
+Embedding stays local either way: there is no `/v1/embeddings` call in this app
+and the index never leaves the machine. What travels is the question and the
+passages retrieved for it. Settings says so when the endpoint is not a fleet.
 
 ## What it does
 
@@ -95,8 +91,7 @@ is not a failure anything reports, so `Tests` asserts the two agree.
 ## Security
 
 It parses documents it did not write and holds a gateway key in the Keychain.
-[`SECURITY.md`](SECURITY.md) says how to report something, and what those two
-facts mean.
+[`SECURITY.md`](SECURITY.md) covers reporting and what those two facts mean.
 
 ## Licence
 

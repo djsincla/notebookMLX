@@ -46,14 +46,27 @@ enum Appearance: String, CaseIterable, Identifiable {
         }
     }
 
+    /// `NSApplication.shared`, not `NSApp`.
+    ///
+    /// `NSApp` is nil until the application instance has been created, and the
+    /// one caller that matters runs in `App.init()` - before the first window,
+    /// deliberately, so it does not flash the system appearance first. There
+    /// `NSApp` is nil, the optional chain evaluates to nothing, and the
+    /// assignment is discarded in silence: the setting saved, the toolbar
+    /// agreed with itself, and every launch came up light.
+    ///
+    /// `NSApplication.shared` creates the instance if it does not exist, so the
+    /// same call at the same moment now lands.
+    @MainActor
     func apply() {
-        NSApp?.appearance = nsAppearance
+        NSApplication.shared.appearance = nsAppearance
     }
 
     // ---------------------------------------------------------- persistence
 
     private static let key = "appearance"
 
+    @MainActor
     static var current: Appearance {
         get { Appearance(rawValue: UserDefaults.standard.string(forKey: key) ?? "")
               ?? .system }

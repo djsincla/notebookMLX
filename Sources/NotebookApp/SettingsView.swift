@@ -13,6 +13,8 @@ struct SettingsView: View {
     @State private var baseURL: String
     @State private var caPath: String
     @State private var model: String
+    /// nil is "work it out from the address"; a value is the operator saying.
+    @State private var isDaiFleet: Bool?
     @State private var maxTokens = GatewaySettings.maxTokens
     @State private var appearance = Appearance.current
     @State private var available: [Gateway.Model] = []
@@ -47,6 +49,7 @@ struct SettingsView: View {
         _baseURL = State(initialValue: current.baseURL)
         _caPath = State(initialValue: current.caPath)
         _model = State(initialValue: current.model)
+        _isDaiFleet = State(initialValue: current.isDaiFleet)
         _key = State(initialValue: Credentials.read(current.id) ?? "")
     }
 
@@ -75,6 +78,16 @@ struct SettingsView: View {
             }
             Section("Where it points") {
                 TextField("Name", text: $name, prompt: Text("Fleet, OpenAI, work vLLM"))
+                // Declared, not guessed. The address heuristic said 127.0.0.1
+                // was a fleet, which is true of the network and false of LM
+                // Studio - and the consequence was waiving the model
+                // requirement for a server that enforces it.
+                Picker("Server", selection: $isDaiFleet) {
+                    Text("Work it out").tag(Bool?.none)
+                    Text("dAI fleet").tag(Bool?.some(true))
+                    Text("OpenAI-compatible").tag(Bool?.some(false))
+                }
+                .pickerStyle(.segmented)
                 TextField("Gateway", text: $baseURL, prompt: Text("https://host:8452"))
                 HStack {
                     TextField("CA certificate", text: $caPath,
@@ -235,7 +248,7 @@ struct SettingsView: View {
     /// The fields on screen as an endpoint record, before they are saved.
     private var edited: Endpoint {
         Endpoint(id: selectedID, name: name, baseURL: baseURL,
-                 caPath: caPath, model: model)
+                 caPath: caPath, model: model, isDaiFleet: isDaiFleet)
     }
 
     private var destination: Gateway.Configuration {
@@ -344,6 +357,7 @@ struct SettingsView: View {
         endpoint.baseURL = baseURL
         endpoint.caPath = caPath
         endpoint.model = model
+        endpoint.isDaiFleet = isDaiFleet
         store.save(endpoint)
         store.selectedID = selectedID
         Credentials.write(key, for: id)
@@ -357,6 +371,7 @@ struct SettingsView: View {
         baseURL = e.baseURL
         caPath = e.caPath
         model = e.model
+        isDaiFleet = e.isDaiFleet
         key = Credentials.read(id) ?? ""
         // The model list belongs to the endpoint that offered it.
         available = []
@@ -381,7 +396,7 @@ struct SettingsView: View {
         // server with different credentials, and silently carrying one over
         // would be the wrong guess in the case that matters.
         let copy = Endpoint(name: "\(name) copy", baseURL: baseURL,
-                            caPath: caPath, model: model)
+                            caPath: caPath, model: model, isDaiFleet: isDaiFleet)
         store.save(copy)
         endpoints = store.all
         selectedID = copy.id

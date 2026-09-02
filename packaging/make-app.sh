@@ -90,6 +90,19 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <!-- Regular, not accessory: it needs a Dock icon, a menu bar and focus. -->
   <key>LSUIElement</key><false/>
   <key>NSHighResolutionCapable</key><true/>
+  <!-- Reach a local OpenAI-compatible server over plain http.
+       App Transport Security blocks http:// by default, which is right for the
+       internet and wrong for the thing this app is now built to do: LM Studio
+       on 127.0.0.1:1234, Ollama on 11434, a vLLM on the bench next to you. All
+       of them are http, and without this the request fails before it is sent,
+       with an error about a secure connection rather than about the server.
+       NSAllowsLocalNetworking is the narrow form - loopback, .local and
+       unqualified names only. It does not permit arbitrary http to the
+       internet, and a public endpoint is https anyway. -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key><true/>
+  </dict>
   <!-- The notebook package, declared so the Finder shows one file rather than
        a folder and the open panel can filter for it. -->
   <key>UTExportedTypeDeclarations</key>

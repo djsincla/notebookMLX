@@ -82,6 +82,39 @@ struct GatewayDestinationTests {
         }
     }
 
+    @Test("a declaration beats the address")
+    func declarationWins() {
+        // The case the heuristic got wrong. LM Studio on 127.0.0.1 is a private
+        // address and not a fleet, so "private means fleet" waived the model
+        // requirement for a server that enforces it.
+        let local = Gateway.Configuration(
+            baseURL: URL(string: "http://127.0.0.1:1234")!, isDaiFleet: false)
+        #expect(!local.looksLikeFleet)
+        #expect(Endpoint(name: "LM Studio", baseURL: "http://127.0.0.1:1234",
+                         isDaiFleet: false).problem == "needs a model")
+
+        // And the other way: a fleet on a routable name, reached over https
+        // with no CA path, is still a fleet if it says so.
+        let remote = Gateway.Configuration(
+            baseURL: URL(string: "https://dai.example.com:8452")!, isDaiFleet: true)
+        #expect(remote.looksLikeFleet)
+
+        // Unset still infers, so records written before this behave as before.
+        #expect(Gateway.Configuration(
+            baseURL: URL(string: "http://127.0.0.1:1234")!).looksLikeFleet)
+    }
+
+    @Test("a declared third-party endpoint is refused without a model")
+    func declaredLocalNeedsModel() async {
+        let gateway = Gateway(
+            configuration: .init(baseURL: URL(string: "http://127.0.0.1:1234")!,
+                                 isDaiFleet: false),
+            credential: { "sk-test" })
+        await #expect(throws: Gateway.Failure.modelRequired) {
+            _ = try await gateway.answer(question: "why", passages: [], history: [])
+        }
+    }
+
     @Test("a fleet may still be asked without one")
     func fleetNeedsNoModel() async {
         // The behaviour the optional field exists for: the group decides.

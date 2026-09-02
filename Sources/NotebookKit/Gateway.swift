@@ -13,10 +13,21 @@ public actor Gateway {
         /// The control plane's own CA, so its certificate can be trusted
         /// without trusting everything else signed by nobody.
         public var caCertificatePath: String?
+        /// Whether this is a dAI fleet, when the caller knows.
+        ///
+        /// nil means "work it out from the address", which is what everything
+        /// did before and is still right for a bare `Configuration`. It is only
+        /// ever a guess though, and the guess was wrong in the case that
+        /// matters: LM Studio on 127.0.0.1 is a private address and not a
+        /// fleet, so the model requirement was waived for a server that
+        /// enforces it. An endpoint the operator configured can simply say.
+        public var isDaiFleet: Bool?
 
-        public init(baseURL: URL, caCertificatePath: String? = nil) {
+        public init(baseURL: URL, caCertificatePath: String? = nil,
+                    isDaiFleet: Bool? = nil) {
             self.baseURL = baseURL
             self.caCertificatePath = caCertificatePath
+            self.isDaiFleet = isDaiFleet
         }
 
         public static let localhost = Configuration(
@@ -36,6 +47,8 @@ public actor Gateway {
         /// whether to insist on a model and whether to warn, not whether to
         /// connect.
         public var looksLikeFleet: Bool {
+            // A declaration beats an inference.
+            if let declared = isDaiFleet { return declared }
             if let ca = caCertificatePath, !ca.isEmpty { return true }
             guard let host = baseURL.host?.lowercased() else { return false }
             if host == "localhost" || host == "::1" || host.hasSuffix(".local") {

@@ -26,14 +26,24 @@ public struct Endpoint: Identifiable, Codable, Equatable, Sendable {
     public var caPath: String
     /// Empty asks the endpoint to choose, which only a dAI fleet can do.
     public var model: String
+    /// Whether this is a dAI fleet. nil means infer from the address.
+    ///
+    /// The inference is only ever a guess and it was wrong where it counted:
+    /// LM Studio on 127.0.0.1 is a private address and not a fleet, so the
+    /// model requirement got waived for a server that enforces it. Optional,
+    /// not a plain Bool, so records written before this decode as "infer" and
+    /// keep behaving as they did.
+    public var isDaiFleet: Bool?
 
     public init(id: UUID = UUID(), name: String, baseURL: String,
-                caPath: String = "", model: String = "") {
+                caPath: String = "", model: String = "",
+                isDaiFleet: Bool? = nil) {
         self.id = id
         self.name = name
         self.baseURL = baseURL
         self.caPath = caPath
         self.model = model
+        self.isDaiFleet = isDaiFleet
     }
 
     /// The gateway configuration this describes, or nil if the URL is unusable.
@@ -43,7 +53,8 @@ public struct Endpoint: Identifiable, Codable, Equatable, Sendable {
             return nil
         }
         return Gateway.Configuration(baseURL: url,
-                                     caCertificatePath: caPath.isEmpty ? nil : caPath)
+                                     caCertificatePath: caPath.isEmpty ? nil : caPath,
+                                     isDaiFleet: isDaiFleet)
     }
 
     /// Whether this destination can be asked at all as it stands.

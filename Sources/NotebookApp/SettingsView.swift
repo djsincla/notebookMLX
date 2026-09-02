@@ -7,21 +7,77 @@ import SwiftUI
 /// one of these can be individually correct and collectively wrong, and finding
 /// that out on the first question rather than here means blaming the notebook.
 struct SettingsView: View {
-    @State private var baseURL = GatewaySettings.baseURL
-    @State private var caPath = GatewaySettings.caPath
-    @State private var model = GatewaySettings.model
+    @State private var endpoints: [Endpoint]
+    @State private var selectedID: UUID
+    @State private var name: String
+    @State private var baseURL: String
+    @State private var caPath: String
+    @State private var model: String
     @State private var maxTokens = GatewaySettings.maxTokens
     @State private var appearance = Appearance.current
     @State private var available: [Gateway.Model] = []
     @State private var loadingModels = false
     @State private var modelsProblem: String?
-    @State private var key = Credentials.read() ?? ""
+    @State private var key: String
     @State private var result: String?
     @State private var testing = false
 
+    private let store = EndpointStore()
+
+    init() {
+        let store = EndpointStore()
+        // Bring a single-destination installation forward the first time this
+        // window opens, and give a fresh one something to edit rather than an
+        // empty list and no obvious next move.
+        store.migrateIfNeeded()
+        var list = store.all
+        if list.isEmpty {
+            let fresh = Endpoint(name: "Fleet", baseURL: "https://localhost:8452")
+            store.save(fresh)
+            store.selectedID = fresh.id
+            list = [fresh]
+        }
+        let current = store.selected ?? list[0]
+        _endpoints = State(initialValue: list)
+        _selectedID = State(initialValue: current.id)
+        _name = State(initialValue: current.name)
+        _baseURL = State(initialValue: current.baseURL)
+        _caPath = State(initialValue: current.caPath)
+        _model = State(initialValue: current.model)
+        _key = State(initialValue: Credentials.read(current.id) ?? "")
+    }
+
     var body: some View {
         Form {
-            Section("Fleet") {
+            Section("Destination") {
+                // Saved by name, because switching between a fleet, a private
+                // server and somebody's cloud endpoint used to mean retyping
+                // three fields and losing whichever one you were not using -
+                // along with its key, which is the part that stings.
+                Picker("In use", selection: $selectedID) {
+                    ForEach(endpoints) { e in
+                        Text(e.problem == nil ? e.name : "\(e.name) · \(e.problem!)")
+                            .tag(e.id)
+                    }
+                }
+                .onChange(of: selectedID) { old, new in
+                    // Save what was on screen before showing the next one, or
+                    // switching quietly discards an edit.
+                    persist(into: old)
+                    load(new)
+                }
+                HStack(spacing: 8) {
+                    Button("Add") { add() }
+                    Button("Duplicate") { duplicate() }
+                    Button("Delete") { remove() }
+                        .disabled(endpoints.count < 2)
+                    Spacer()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            Section("Where it points") {
+                TextField("Name", text: $name, prompt: Text("Fleet, OpenAI, work vLLM"))
                 TextField("Gateway", text: $baseURL, prompt: Text("https://host:8452"))
                 HStack {
                     TextField("CA certificate", text: $caPath,
@@ -202,12 +258,76 @@ struct SettingsView: View {
         }
     }
 
+    /// Write the fields on screen into one endpoint, and its key beside it.
+    private func persist(into id: UUID) {
+        var endpoint = endpoints.first(where: { $0.id == id })
+            ?? Endpoint(id: id, name: name, baseURL: baseURL)
+        endpoint.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if endpoint.name.isEmpty { endpoint.name = "Untitled" }
+        endpoint.baseURL = baseURL
+        endpoint.caPath = caPath
+        endpoint.model = model
+        store.save(endpoint)
+        store.selectedID = selectedID
+        Credentials.write(key, for: id)
+        endpoints = store.all
+    }
+
+    /// Show a different endpoint, key included.
+    private func load(_ id: UUID) {
+        guard let e = endpoints.first(where: { $0.id == id }) else { return }
+        name = e.name
+        baseURL = e.baseURL
+        caPath = e.caPath
+        model = e.model
+        key = Credentials.read(id) ?? ""
+        // The model list belongs to the endpoint that offered it.
+        available = []
+        modelsProblem = nil
+        result = nil
+        loadModels()
+    }
+
+    private func add() {
+        persist(into: selectedID)
+        let fresh = Endpoint(name: "New destination", baseURL: "https://")
+        store.save(fresh)
+        endpoints = store.all
+        selectedID = fresh.id
+        load(fresh.id)
+    }
+
+    private func duplicate() {
+        persist(into: selectedID)
+        // A new id, so it gets its own Keychain item rather than sharing one.
+        // The key is not copied: the common reason to duplicate is the same
+        // server with different credentials, and silently carrying one over
+        // would be the wrong guess in the case that matters.
+        let copy = Endpoint(name: "\(name) copy", baseURL: baseURL,
+                            caPath: caPath, model: model)
+        store.save(copy)
+        endpoints = store.all
+        selectedID = copy.id
+        load(copy.id)
+    }
+
+    private func remove() {
+        guard endpoints.count > 1 else { return }
+        let doomed = selectedID
+        // The key goes with it. A credential outliving the destination it was
+        // for is a secret nobody is looking after any more.
+        Credentials.delete(doomed)
+        store.remove(doomed)
+        endpoints = store.all
+        if let next = store.selected?.id {
+            selectedID = next
+            load(next)
+        }
+    }
+
     private func save() {
-        GatewaySettings.baseURL = baseURL
-        GatewaySettings.caPath = caPath
-        GatewaySettings.model = model
         GatewaySettings.maxTokens = maxTokens
-        Credentials.write(key)
+        persist(into: selectedID)
     }
 
     private func choose() {
@@ -226,10 +346,11 @@ struct SettingsView: View {
             guard let url = URL(string: baseURL) else {
                 result = "That is not a URL."; testing = false; return
             }
+            let id = selectedID
             let gateway = Gateway(
                 configuration: .init(baseURL: url,
                                      caCertificatePath: caPath.isEmpty ? nil : caPath),
-                credential: { Credentials.read() })
+                credential: { Credentials.read(id) })
             do {
                 // A real request rather than a ping, because reachability and
                 // a working credential are different questions and only the

@@ -1,4 +1,5 @@
 import Foundation
+import NotebookKit
 import Security
 
 /// The gateway key, in the Keychain.
@@ -11,11 +12,29 @@ import Security
 /// `kSecAttrAccessibleWhenUnlocked` rather than the default: the app has no
 /// reason to read the key while the machine is locked, and a key that cannot be
 /// read then cannot be taken from a sleeping laptop.
+/// One item per endpoint, since each destination has its own key.
+///
+/// The account is the endpoint's id. That is why `EndpointStore.migratedID` is
+/// a fixed value rather than a fresh UUID: the key saved before endpoints
+/// existed lives under the old account name, and the migration has to be able
+/// to find it again from nothing but the id it invented.
 enum Credentials {
     private static let service = "com.dai.notebookmlx.gateway"
-    private static let account = "api-key"
+    /// What the single-destination version used. Read for migration, then left
+    /// alone - deleting it would make the migration unrepeatable if it is wrong.
+    private static let legacyAccount = "api-key"
 
-    static func read() -> String? {
+    private static func account(_ id: UUID) -> String { id.uuidString }
+
+    static func read(_ id: UUID) -> String? {
+        if let found = read(account: account(id)) { return found }
+        // The migrated endpoint inherits the key that predates endpoints. Only
+        // that id, so a second endpoint does not silently borrow it.
+        if id == EndpointStore.migratedID { return read(account: legacyAccount) }
+        return nil
+    }
+
+    private static func read(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -30,9 +49,10 @@ enum Credentials {
     }
 
     @discardableResult
-    static func write(_ key: String) -> Bool {
+    static func write(_ key: String, for id: UUID) -> Bool {
+        let account = account(id)
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return delete() }
+        if trimmed.isEmpty { return delete(id) }
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -51,12 +71,14 @@ enum Credentials {
                           nil) == errSecSuccess
     }
 
+    /// Forgets an endpoint's key. Called when the endpoint is deleted, so a
+    /// credential does not outlive the thing it was for.
     @discardableResult
-    static func delete() -> Bool {
+    static func delete(_ id: UUID) -> Bool {
         SecItemDelete([
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: account(id),
         ] as CFDictionary) == errSecSuccess
     }
 }

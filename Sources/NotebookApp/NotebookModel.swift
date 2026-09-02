@@ -400,8 +400,7 @@ final class NotebookModel {
                         question: question,
                         passages: hits.map { ($0.chunk.citation, $0.chunk.text) },
                         history: Array(history),
-                        model: GatewaySettings.model.isEmpty
-                            ? nil : GatewaySettings.model,
+                        model: AskBar.selectedModel(),
                         maxTokens: GatewaySettings.maxTokens)
                     answer = reply.text
                     node = reply.node

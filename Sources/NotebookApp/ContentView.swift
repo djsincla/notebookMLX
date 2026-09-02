@@ -1273,12 +1273,26 @@ struct AskBar: View {
     /// what this app did before generation existed. A turn without an answer
     /// says so rather than pretending.
     static func gateway() -> Gateway? {
-        guard let url = URL(string: GatewaySettings.baseURL),
-              Credentials.read()?.isEmpty == false else { return nil }
-        let ca = GatewaySettings.caPath
-        return Gateway(configuration: .init(baseURL: url,
-                                            caCertificatePath: ca.isEmpty ? nil : ca),
-                       credential: { Credentials.read() })
+        let store = EndpointStore()
+        store.migrateIfNeeded()
+        guard let endpoint = store.selected,
+              let configuration = endpoint.configuration,
+              Credentials.read(endpoint.id)?.isEmpty == false else { return nil }
+        // The key is fetched per request rather than captured, so switching
+        // endpoint or editing a key takes effect on the next question.
+        let id = endpoint.id
+        return Gateway(configuration: configuration,
+                       credential: { Credentials.read(id) })
+    }
+
+    /// The model the selected endpoint should be asked for, if it names one.
+    ///
+    /// Empty means "let the endpoint choose", which only a dAI fleet can do -
+    /// Gateway refuses the request off-fleet rather than letting it come back
+    /// as a 400 that reads like a bad key.
+    static func selectedModel() -> String? {
+        let model = EndpointStore().selected?.model ?? ""
+        return model.isEmpty ? nil : model
     }
 
     var body: some View {

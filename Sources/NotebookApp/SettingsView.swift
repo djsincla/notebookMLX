@@ -54,17 +54,11 @@ struct SettingsView: View {
                 // server and somebody's cloud endpoint used to mean retyping
                 // three fields and losing whichever one you were not using -
                 // along with its key, which is the part that stings.
-                Picker("In use", selection: $selectedID) {
+                Picker("In use", selection: inUse) {
                     ForEach(endpoints) { e in
                         Text(e.problem == nil ? e.name : "\(e.name) · \(e.problem!)")
                             .tag(e.id)
                     }
-                }
-                .onChange(of: selectedID) { old, new in
-                    // Save what was on screen before showing the next one, or
-                    // switching quietly discards an edit.
-                    persist(into: old)
-                    load(new)
                 }
                 HStack(spacing: 8) {
                     Button("Add") { add() }
@@ -182,9 +176,22 @@ struct SettingsView: View {
                 // key in a plist is readable by anything running as this user
                 // and turns up in backups and screen shares.
                 SecureField("API key", text: $key)
-                Text("Kept in the Keychain. An operator mints one with "
-                     + "POST /admin/v1/auth/keys.")
-                    .font(.caption).foregroundStyle(.secondary)
+                // The advice depends on where this points. "An operator mints
+                // one" is true of a fleet and nonsense for OpenAI, and a local
+                // server usually wants no key at all while the app still
+                // insists on something non-empty - which reads as a bug unless
+                // it is said out loud.
+                if destination.looksLikeFleet {
+                    Text("Kept in the Keychain. An operator mints one with "
+                         + "POST /admin/v1/auth/keys.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Kept in the Keychain. Use the key this provider "
+                         + "issued you. A local server that ignores "
+                         + "credentials still needs something here - any "
+                         + "text will do.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section {
                 HStack {
@@ -256,6 +263,30 @@ struct SettingsView: View {
                 modelsProblem = "\(error)"
             }
         }
+    }
+
+    /// Switching destination, as one indivisible step.
+    ///
+    /// This was `.onChange(of: selectedID)`, and it destroyed a saved endpoint.
+    /// SwiftUI runs onChange *after* the view update, so `add()` - which sets
+    /// selectedID and then loads the new endpoint's values into the fields -
+    /// had already replaced them by the time the handler ran. The handler then
+    /// did what it was told: saved the fields on screen into the endpoint that
+    /// had just been switched away from. The result was a Fleet record
+    /// containing "New destination" and "https://", and nothing anywhere said
+    /// so - the only reason it was recoverable is that the migration leaves the
+    /// original defaults keys in place.
+    ///
+    /// A binding keeps save-switch-load in one synchronous sequence with no
+    /// second writer, so ordering cannot be the question.
+    private var inUse: Binding<UUID> {
+        Binding(get: { selectedID },
+                set: { new in
+                    guard new != selectedID else { return }
+                    persist(into: selectedID)
+                    selectedID = new
+                    load(new)
+                })
     }
 
     /// Write the fields on screen into one endpoint, and its key beside it.

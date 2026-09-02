@@ -47,6 +47,33 @@ struct EndpointStoreTests {
         }
     }
 
+    @Test("saving one destination never disturbs another")
+    func saveIsolation() {
+        // The invariant the Settings window broke: two writers, one of them
+        // deferred, wrote the fields on screen into the endpoint that had just
+        // been switched away from. The store itself was never at fault, so
+        // this would not have caught that bug - it pins the guarantee the view
+        // is entitled to rely on, which is the half that can be tested here.
+        scratch { store in
+            let a = Endpoint(name: "Fleet", baseURL: "https://localhost:8452",
+                             caPath: "/etc/dai/srv-ca.crt")
+            let b = Endpoint(name: "OpenAI", baseURL: "https://api.openai.com",
+                             model: "gpt-4o-mini")
+            store.save(a)
+            store.save(b)
+            var edited = b
+            edited.name = "OpenAI (work)"
+            edited.baseURL = "https://api.openai.com/v1"
+            store.save(edited)
+
+            let fleet = store.all.first { $0.id == a.id }
+            #expect(fleet?.name == "Fleet")
+            #expect(fleet?.baseURL == "https://localhost:8452")
+            #expect(fleet?.caPath == "/etc/dai/srv-ca.crt")
+            #expect(store.all.count == 2)
+        }
+    }
+
     @Test("a dangling selection falls back rather than answering nothing")
     func danglingSelection() {
         scratch { store in

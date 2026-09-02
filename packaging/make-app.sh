@@ -29,7 +29,25 @@ cp "$BIN" "$APP/Contents/MacOS/NotebookMLX"
 # bundle is borrowed: it is the same vendored mlx-swift, by path, so it is the
 # same shaders. If the agent has not been built, embedding will abort with
 # "Failed to load the default metallib" and this says so now instead.
-CMLX="$ROOT/../agent/.xcbuild/Build/Products/Release/mlx-swift_Cmlx.bundle"
+# Where to look for it. This was a single relative path into `../agent`, which
+# was correct while this app lived inside dAI's tree and broke silently the day
+# it moved out: the warning below is easy to miss and the app it produces aborts
+# at the first embedding with "Failed to load the default metallib".
+#
+# So: an explicit override first, then a sibling dAI checkout, then the old
+# in-tree layout for anyone who still has one.
+CMLX_REL="Build/Products/Release/mlx-swift_Cmlx.bundle"
+CMLX=""
+for candidate in \
+  "${DAI_CMLX_BUNDLE:-}" \
+  "$ROOT/../dAI/agent/.xcbuild/$CMLX_REL" \
+  "$ROOT/../agent/.xcbuild/$CMLX_REL"
+do
+  [[ -n "$candidate" && -d "$candidate" ]] || continue
+  CMLX="$candidate"
+  break
+done
+[[ -n "$CMLX" ]] || CMLX="$ROOT/../dAI/agent/.xcbuild/$CMLX_REL"
 if [[ -d "$CMLX" ]]; then
   # Both locations, because the lookup differs by how the binary is launched.
   # A bare SwiftPM executable finds its package bundles beside itself; inside a
@@ -39,8 +57,11 @@ if [[ -d "$CMLX" ]]; then
   cp -R "$CMLX" "$APP/Contents/MacOS/"
   cp -R "$CMLX" "$APP/Contents/Resources/"
 else
-  echo "warning: no Metal shader bundle found at $CMLX" >&2
-  echo "         build the agent first, or embedding will abort at runtime" >&2
+  echo "warning: no Metal shader bundle found" >&2
+  echo "         looked for: $CMLX" >&2
+  echo "         build dAI's agent with xcodebuild, or set DAI_CMLX_BUNDLE." >&2
+  echo "         Without it embedding aborts at runtime with" >&2
+  echo "         'Failed to load the default metallib'." >&2
 fi
 
 # The icon, if it has been built. Checked in rather than generated here so a

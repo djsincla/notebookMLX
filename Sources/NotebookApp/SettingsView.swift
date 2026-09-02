@@ -21,6 +21,9 @@ struct SettingsView: View {
     @State private var key: String
     @State private var result: String?
     @State private var testing = false
+    /// Bumped on every model fetch, so a late reply for a destination that is
+    /// no longer selected is dropped rather than displayed.
+    @State private var generation = 0
 
     private let store = EndpointStore()
 
@@ -75,7 +78,9 @@ struct SettingsView: View {
                 TextField("Gateway", text: $baseURL, prompt: Text("https://host:8452"))
                 HStack {
                     TextField("CA certificate", text: $caPath,
-                              prompt: Text("the installer prints this path"))
+                              prompt: Text(destination.looksLikeFleet
+                                  ? "the installer prints this path"
+                                  : "leave empty - a public server uses the system roots"))
                     Button("Choose…") { choose() }
                 }
                 // A picker fed from the fleet, not a field to type an id into.
@@ -85,7 +90,8 @@ struct SettingsView: View {
                 // refusal that reads as the fleet being broken rather than as a
                 // setting being wrong.
                 Picker("Model", selection: $model) {
-                    Text("Whatever the fleet is serving").tag("")
+                    Text(destination.looksLikeFleet ? "Whatever the fleet is serving"
+                                                    : "Choose a model").tag("")
                     // Loaded first, then the rest. Both can be served; the
                     // ones already in memory answer immediately, and the others
                     // pay a cold load on the first question.
@@ -102,7 +108,7 @@ struct SettingsView: View {
                 }
                 .disabled(available.isEmpty && model.isEmpty)
                 HStack(spacing: 8) {
-                    Button(loadingModels ? "Loading…" : "Refresh from fleet") {
+                    Button(refreshLabel) {
                         loadModels()
                     }
                     .disabled(loadingModels)
@@ -219,6 +225,19 @@ struct SettingsView: View {
     /// when it is worth reading, rather than after they have closed the window.
     /// An unparseable URL falls back to the local default and warns about
     /// nothing: an empty field is somebody who has not decided yet.
+    /// Broken out because the ternary inline in the label defeated the type
+    /// checker: "unable to type-check this expression in reasonable time".
+    private var refreshLabel: String {
+        if loadingModels { return "Loading…" }
+        return destination.looksLikeFleet ? "Refresh from fleet" : "Refresh from server"
+    }
+
+    /// The fields on screen as an endpoint record, before they are saved.
+    private var edited: Endpoint {
+        Endpoint(id: selectedID, name: name, baseURL: baseURL,
+                 caPath: caPath, model: model)
+    }
+
     private var destination: Gateway.Configuration {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         return Gateway.Configuration(
@@ -243,23 +262,50 @@ struct SettingsView: View {
     /// Failure is reported beside the control rather than thrown away: a picker
     /// that is simply empty cannot be told apart from a fleet with nothing to
     /// offer, and the two need different actions.
+    /// Ask the destination on screen what it serves.
+    ///
+    /// Built from the fields, not from `AskBar.gateway()`. That reads the
+    /// *saved* selection out of the store, and the store does not know about
+    /// the switch until the next persist - so Refresh listed the destination
+    /// you had just left. It showed the fleet's nine models beside a LM Studio
+    /// URL, with the chosen model marked "not offered now" because the fleet
+    /// has never heard of it. The same bug meant typing a new URL and pressing
+    /// Refresh queried the old one.
+    ///
+    /// `generation` discards a reply that arrives after another switch. Without
+    /// it a slow fleet answering late overwrites a fast local server's list,
+    /// which looks identical to the bug above and is not the same cause.
     private func loadModels() {
+        guard let configuration = edited.configuration else {
+            available = []
+            modelsProblem = "That is not a URL."
+            return
+        }
+        let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else {
+            available = []
+            modelsProblem = "Set a key first."
+            return
+        }
+        generation &+= 1
+        let mine = generation
         loadingModels = true
         modelsProblem = nil
+        let gateway = Gateway(configuration: configuration, credential: { trimmedKey })
         Task {
-            defer { loadingModels = false }
-            guard let gateway = AskBar.gateway() else {
-                modelsProblem = "Set the gateway and a key first."
-                return
-            }
+            defer { if mine == generation { loadingModels = false } }
             do {
                 // Loaded models first: the ones that answer without a wait.
-                available = try await gateway.models()
+                let found = try await gateway.models()
                     .sorted { a, b in
                         a.loaded == b.loaded ? a.shortName < b.shortName : a.loaded
                     }
-                if available.isEmpty { modelsProblem = "The fleet offers no models." }
+                guard mine == generation else { return }
+                available = found
+                if available.isEmpty { modelsProblem = "It offers no models." }
             } catch {
+                guard mine == generation else { return }
+                available = []
                 modelsProblem = "\(error)"
             }
         }

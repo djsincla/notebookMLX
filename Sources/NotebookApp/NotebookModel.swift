@@ -384,6 +384,7 @@ final class NotebookModel {
                 var finish: String?
                 var applied: Int?
                 var capped: Bool?
+                var stoppedAt: String?
 
                 if let gateway {
                     await MainActor.run { self?.pending?.stage = "Asking the fleet…" }
@@ -401,7 +402,8 @@ final class NotebookModel {
                         passages: hits.map { ($0.chunk.citation, $0.chunk.text) },
                         history: Array(history),
                         model: AskBar.selectedModel(),
-                        maxTokens: GatewaySettings.maxTokens)
+                        maxTokens: GatewaySettings.maxTokens,
+                        sampling: GatewaySettings.sampling)
                     answer = reply.text
                     node = reply.node
                     presence = reply.presenceState
@@ -409,6 +411,7 @@ final class NotebookModel {
                     finish = reply.finishReason
                     applied = reply.maxTokensApplied
                     capped = reply.cappedByPolicy
+                    stoppedAt = reply.stopSequence
                 }
 
                 let turn = NotebookPackage.Turn(
@@ -424,7 +427,7 @@ final class NotebookModel {
                     seconds: Date().timeIntervalSince(started),
                     sources: await MainActor.run { self?.activeSources } ?? [],
                     finishReason: finish, maxTokensApplied: applied,
-                    cappedByPolicy: capped)
+                    cappedByPolicy: capped, stoppedAt: stoppedAt)
                 // Checked once more before the record is written. A question
                 // stopped while the answer was already on its way back should
                 // leave no turn behind: a record that contains an exchange the

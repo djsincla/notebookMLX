@@ -1196,6 +1196,15 @@ struct Provenance: View {
             if turn.wasTruncated, let applied = turn.maxTokensApplied {
                 Text("cut at \(applied)").foregroundStyle(Palette.warning)
             }
+            // Not a warning. The answer ended where the reader said it should,
+            // which is the setting working rather than the answer being short -
+            // and it is shown at all because that is otherwise invisible: a stop
+            // sequence that never matches produces exactly the same page as one
+            // that does.
+            if let stopped = turn.stoppedAt {
+                Text("stopped at \(StopList.text([stopped]))")
+                    .foregroundStyle(Palette.inkTertiary)
+            }
             // What wrote the answer.
             //
             // Recorded since generation existed and never shown, so the line

@@ -126,6 +126,14 @@ public actor Gateway {
         public let maxTokensApplied: Int?
         public let cappedByPolicy: Bool
 
+        /// Which stop sequence ended the answer, when one did.
+        ///
+        /// Read from the fleet's `dai` block. An answer that ends early because
+        /// the reader's own stop sequence matched looks exactly like a model
+        /// with nothing more to say, and the two want different responses: one
+        /// is the setting working, the other is the answer being complete.
+        public var stopSequence: String? = nil
+
         /// Whether the model stopped because it ran out of room.
         public var wasTruncated: Bool { finishReason == "length" }
     }
@@ -163,7 +171,8 @@ public actor Gateway {
     public func answer(question: String, passages: [(citation: String, text: String)],
                        history: [(question: String, answer: String)],
                        model: String? = nil,
-                       maxTokens: Int = 800) async throws -> Answer {
+                       maxTokens: Int = 800,
+                       sampling: Sampling = .endpointDefault) async throws -> Answer {
         guard let key = credential(), !key.isEmpty else { throw Failure.noCredential }
         // Refused here rather than discovered as a 400 from a stranger's API.
         guard model != nil || configuration.looksLikeFleet else {
@@ -179,6 +188,15 @@ public actor Gateway {
 
         var body: [String: Any] = ["messages": messages, "max_tokens": maxTokens]
         if let model { body["model"] = model }
+        // Merged rather than assigned, and only what was actually set. An unset
+        // preference sends no field at all, so a reader who has never opened
+        // Settings gets whatever the endpoint chose for itself - which is what
+        // happened before this parameter existed, and is the only honest
+        // default when the endpoint might be a fleet, LM Studio or OpenAI.
+        for (field, value) in sampling.requestFields(
+            isDaiFleet: configuration.looksLikeFleet) {
+            body[field] = value
+        }
 
         let started = Date()
         let (data, response) = try await send("/v1/chat/completions", body: body,
@@ -208,7 +226,8 @@ public actor Gateway {
                       seconds: seconds,
                       finishReason: finish,
                       maxTokensApplied: dai?["maxTokensApplied"] as? Int,
-                      cappedByPolicy: (dai?["cappedByPolicy"] as? Bool) ?? false)
+                      cappedByPolicy: (dai?["cappedByPolicy"] as? Bool) ?? false,
+                      stopSequence: dai?["stopSequence"] as? String)
     }
 
     /// What the model is told, once, for the life of the conversation.

@@ -175,6 +175,15 @@ public struct NotebookPackage: Sendable {
         public var finishReason: String?
         public var maxTokensApplied: Int?
         public var cappedByPolicy: Bool?
+        /// The reader's own stop sequence, when one ended this answer.
+        ///
+        /// The only evidence the setting did anything. An answer that ends at a
+        /// stop sequence is a complete answer by every other measure - the
+        /// finish reason is `stop`, nothing is truncated - so without this a
+        /// reader cannot tell a sequence that matched from one that never did,
+        /// and a stop sequence that is quietly never matching is
+        /// indistinguishable from one that works.
+        public var stoppedAt: String?
 
         /// Whether this answer was cut off rather than finished.
         public var wasTruncated: Bool { finishReason == "length" }
@@ -193,7 +202,7 @@ public struct NotebookPackage: Sendable {
                     presenceState: String? = nil, generationModel: String? = nil,
                     seconds: Double? = nil, sources: [String]? = nil,
                     finishReason: String? = nil, maxTokensApplied: Int? = nil,
-                    cappedByPolicy: Bool? = nil) {
+                    cappedByPolicy: Bool? = nil, stoppedAt: String? = nil) {
             self.askedAt = askedAt
             self.question = question
             self.answer = answer
@@ -209,6 +218,7 @@ public struct NotebookPackage: Sendable {
             self.finishReason = finishReason
             self.maxTokensApplied = maxTokensApplied
             self.cappedByPolicy = cappedByPolicy
+            self.stoppedAt = stoppedAt
         }
     }
 

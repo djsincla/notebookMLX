@@ -138,4 +138,29 @@ enum GatewaySettings {
         }
         set { UserDefaults.standard.set(newValue, forKey: "gateway.maxTokens") }
     }
+
+    /// How the model is asked to sample, or nothing at all.
+    ///
+    /// Stored as one JSON blob rather than as four keys, so that "unset" is a
+    /// state the whole record can be in. Four separate keys would each need
+    /// their own sentinel for "never chosen", and `double(forKey:)` returning 0
+    /// for an absent key is exactly the trap `maxTokens` above already
+    /// documents - except that 0 is a *valid* temperature, so the same mistake
+    /// here would silently pin every request to greedy.
+    ///
+    /// A blob that fails to decode falls back to unset rather than throwing.
+    /// The worst case is a reader's preference being forgotten once; the
+    /// alternative is a Settings window that will not open.
+    static var sampling: Sampling {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: "gateway.sampling"),
+                  let decoded = try? JSONDecoder().decode(Sampling.self, from: data)
+            else { return .endpointDefault }
+            return decoded
+        }
+        set {
+            UserDefaults.standard.set(try? JSONEncoder().encode(newValue),
+                                      forKey: "gateway.sampling")
+        }
+    }
 }

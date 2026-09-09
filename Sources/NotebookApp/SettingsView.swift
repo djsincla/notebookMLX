@@ -16,6 +16,11 @@ struct SettingsView: View {
     /// nil is "work it out from the address"; a value is the operator saying.
     @State private var isDaiFleet: Bool?
     @State private var maxTokens = GatewaySettings.maxTokens
+    @State private var sampling = GatewaySettings.sampling
+    /// Stop sequences as one editable line. Kept beside `sampling` rather than
+    /// derived from it on every keystroke, so a half-typed escape does not
+    /// reformat itself under the cursor.
+    @State private var stopText = StopList.text(GatewaySettings.sampling.stop)
     @State private var appearance = Appearance.current
     @State private var available: [Gateway.Model] = []
     @State private var loadingModels = false
@@ -190,6 +195,7 @@ struct SettingsView: View {
                      + "finishes early costs nothing extra.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            samplingSection
             Section("Credential") {
                 // Secure, and stored in the Keychain rather than in defaults: a
                 // key in a plist is readable by anything running as this user
@@ -251,11 +257,143 @@ struct SettingsView: View {
                  caPath: caPath, model: model, isDaiFleet: isDaiFleet)
     }
 
+    /// How the model is asked to sample.
+    ///
+    /// Two states, because there are genuinely two decisions and only one of
+    /// them is about numbers. "Endpoint default" sends no sampling fields at
+    /// all, which is what this app did before the section existed and is the
+    /// only honest thing to do when the destination might be a dAI fleet, LM
+    /// Studio or OpenAI - each of which has its own default and none of which
+    /// this notebook has any business overriding unasked.
+    ///
+    /// Derived from the values rather than stored beside them. A saved "mode"
+    /// is a second source of truth about the same fact, and the failure it
+    /// produces is a window that says Custom over a request that sends nothing.
+    private var isCustomSampling: Bool { sampling.temperature != nil }
+
+    @ViewBuilder
+    private var samplingSection: some View {
+        Section("Sampling") {
+            Picker("Sampling", selection: Binding(
+                get: { isCustomSampling },
+                // Set synchronously rather than through .onChange, which is the
+                // mistake this window has already made once: a deferred write
+                // ran after the fields had been replaced and saved them into
+                // the endpoint that had just been switched away from.
+                set: { custom in
+                    if custom {
+                        // Greedy and unfiltered, which is a deliberate starting
+                        // point rather than a neutral one: it is what a dAI
+                        // fleet already does, so switching to Custom changes
+                        // nothing on a fleet and pins every other endpoint to
+                        // the same behaviour. A reader comparing two
+                        // destinations is then comparing the models.
+                        sampling.temperature = 0
+                        sampling.topP = 1
+                    } else {
+                        sampling = .endpointDefault
+                        stopText = ""
+                    }
+                })) {
+                Text("Endpoint default").tag(false)
+                Text("Custom").tag(true)
+            }
+            .pickerStyle(.segmented)
+
+            if !isCustomSampling {
+                Text(destination.looksLikeFleet
+                     ? "No sampling settings are sent, so the fleet decides. A "
+                       + "dAI fleet is greedy: the same question against the "
+                       + "same model gives the same answer."
+                     : "No sampling settings are sent, so this endpoint uses "
+                       + "its own defaults. Most vary their answers between "
+                       + "identical questions.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                slider("Temperature", value: Binding(
+                    get: { sampling.temperature ?? 0 },
+                    set: { sampling.temperature = $0 }),
+                       range: 0 ... 2, step: 0.05,
+                       caption: (sampling.temperature ?? 0) == 0
+                         ? "Greedy. The same question gives the same answer."
+                         : "Higher varies the wording and invents more. "
+                           + "Answers stop being repeatable.")
+
+                slider("Top P", value: Binding(
+                    get: { sampling.topP ?? 1 },
+                    set: { sampling.topP = $0 }),
+                       range: 0.05 ... 1, step: 0.05,
+                       caption: "Considers only the most likely words that "
+                              + "together make up this share of the "
+                              + "probability. Does nothing at temperature 0.")
+
+                Toggle("Repetition penalty", isOn: Binding(
+                    get: { sampling.repetitionPenalty != nil },
+                    set: { sampling.repetitionPenalty = $0 ? 1.1 : nil }))
+                if let penalty = sampling.repetitionPenalty {
+                    slider("Strength", value: Binding(
+                        get: { penalty },
+                        set: { sampling.repetitionPenalty = $0 }),
+                           range: 1 ... 1.5, step: 0.01,
+                           caption: "Discourages the model from repeating "
+                                  + "itself. Not part of the OpenAI API.")
+                    if !destination.looksLikeFleet {
+                        // Said here rather than discovered as a 400. OpenAI
+                        // refuses a body field it does not recognise, and the
+                        // refusal names nothing - which on a first question
+                        // reads as a bad key, because that is the other thing
+                        // that produces one.
+                        Text("Not sent to this destination: only a dAI fleet "
+                             + "accepts it. Nothing will break; the setting is "
+                             + "left out of the request.")
+                            .font(.caption).foregroundStyle(Palette.warning)
+                    }
+                }
+
+                TextField("Stop sequences", text: $stopText,
+                          prompt: Text("none"))
+                Text("Comma separated. The answer ends at the first one and it "
+                     + "is removed. Write invisible characters as escapes: "
+                     + #"\n\nHuman: or </task>."#)
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// A labelled slider that shows its value.
+    ///
+    /// The number matters as much as the position here. A slider alone says
+    /// "somewhere near the middle", and the difference between 0.7 and 0.8 is
+    /// something a reader wants to be able to write down and set again.
+    @ViewBuilder
+    private func slider(_ title: String, value: Binding<Double>,
+                        range: ClosedRange<Double>, step: Double,
+                        caption: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(String(format: "%.2f", value.wrappedValue))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Slider(value: value, in: range, step: step)
+            Text(caption).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     private var destination: Gateway.Configuration {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         return Gateway.Configuration(
             baseURL: URL(string: trimmed) ?? Gateway.Configuration.localhost.baseURL,
-            caCertificatePath: caPath.isEmpty ? nil : caPath)
+            caCertificatePath: caPath.isEmpty ? nil : caPath,
+            // Passed on, having been dropped here. The declaration exists
+            // because inferring from the address got LM Studio on 127.0.0.1
+            // wrong, and this accessor is what the notes on screen read to
+            // decide what to say - so without it the window went on inferring
+            // while the request did not, and the two disagreed about the same
+            // endpoint.
+            isDaiFleet: isDaiFleet)
     }
 
     /// How a model reads in the list.
@@ -419,6 +557,9 @@ struct SettingsView: View {
 
     private func save() {
         GatewaySettings.maxTokens = maxTokens
+        var out = sampling
+        out.stop = StopList.parse(stopText)
+        GatewaySettings.sampling = out
         persist(into: selectedID)
     }
 

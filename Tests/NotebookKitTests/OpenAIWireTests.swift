@@ -64,6 +64,71 @@ struct OpenAIWireTests {
         // changes every turn has to come last.
         #expect(messages[3]["content"]?.contains("Records are kept seven years.") == true)
         #expect(messages[0]["content"]?.contains("Records are kept seven years.") == false)
+
+        // Nothing was asked for, so nothing about sampling is on the wire. A
+        // third-party server has its own defaults and this notebook has no
+        // business overriding them unasked.
+        #expect(body["temperature"] == nil)
+        #expect(body["top_p"] == nil)
+        #expect(body["stop"] == nil)
+        #expect(body["repetition_penalty"] == nil)
+    }
+
+    @Test("sends the sampling settings, minus what this endpoint cannot take")
+    func sendsSampling() async throws {
+        let server = try StubServer()
+        defer { server.stop() }
+        let port = try await server.start()
+
+        // A public address, so this is not read as a fleet. That is the whole
+        // point of the test: the same settings go to two kinds of destination
+        // and one field is not welcome at one of them.
+        let gateway = Gateway(
+            configuration: .init(baseURL: URL(string: "http://127.0.0.1:\(port)")!,
+                                 isDaiFleet: false),
+            credential: { "sk-test-key" })
+
+        _ = try await gateway.answer(
+            question: "what is the retention period?",
+            passages: [(citation: "Retention Policy", text: "Records are kept seven years.")],
+            history: [],
+            model: "gpt-4o-mini",
+            maxTokens: 64,
+            sampling: .init(temperature: 0, topP: 0.9,
+                            repetitionPenalty: 1.1, stop: ["\n\nHuman:"]))
+
+        let request = try #require(server.received)
+        let body = try #require(request.json)
+        // Zero, and present. An unset preference sends no field; a preference
+        // set to zero sends zero. Conflating the two would make "Custom,
+        // temperature 0" against OpenAI silently mean OpenAI's own 0.7.
+        #expect(body["temperature"] as? Double == 0)
+        #expect(body["top_p"] as? Double == 0.9)
+        #expect(body["stop"] as? [String] == ["\n\nHuman:"])
+        // Dropped, because this is not a dAI fleet. OpenAI answers 400 for a
+        // body field it does not recognise and names nothing in the refusal,
+        // which on a first question reads as a bad key.
+        #expect(body["repetition_penalty"] == nil)
+    }
+
+    @Test("sends the repetition penalty to a fleet")
+    func sendsPenaltyToFleet() async throws {
+        let server = try StubServer()
+        defer { server.stop() }
+        let port = try await server.start()
+
+        let gateway = Gateway(
+            configuration: .init(baseURL: URL(string: "http://127.0.0.1:\(port)")!,
+                                 isDaiFleet: true),
+            credential: { "sk-test-key" })
+
+        _ = try await gateway.answer(
+            question: "q", passages: [], history: [], model: nil, maxTokens: 16,
+            sampling: .init(temperature: 0.7, repetitionPenalty: 1.1))
+
+        let request = try #require(server.received)
+        let body = try #require(request.json)
+        #expect(body["repetition_penalty"] as? Double == 1.1)
     }
 }
 

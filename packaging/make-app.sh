@@ -132,4 +132,64 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+# Prefer a real signing identity, and fall back to ad-hoc.
+#
+# This is what makes a permission stick. TCC keys its grants on code signing
+# identity: a Developer ID signature gives the same designated requirement on
+# every build, so "allow Documents" is answered once. Ad-hoc signing hashes the
+# binary instead, so every `swift build` presents a new identity and the grant
+# silently stops applying - which is the failure this whole block exists to
+# stop somebody hitting again.
+SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null \
+  | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+if [ -n "$SIGN_ID" ]; then
+  SIGN_AS="$SIGN_ID"
+else
+  # Ad-hoc still beats unsigned, but say why it is worse rather than leaving
+  # somebody to discover it as an app that forgets its permissions.
+  echo "note: no Developer ID found; signing ad-hoc." >&2
+  echo "      macOS will treat each rebuild as a new app and ask again." >&2
+  SIGN_AS="-"
+fi
+
+# Sign the bundle, not just the binary SwiftPM already ad-hoc signed.
+#
+# Without this the bundle carries `Sealed Resources=none`, `Info.plist=not
+# bound`, and a signing identifier derived from the binary
+# (`NotebookApp-5555...`) rather than the one in Info.plist. TCC keys its grants
+# on code signing identity, so an app in that state cannot hold a Documents
+# folder permission against `com.dai.notebookmlx`: the identifier it presents is
+# not the identifier anybody grants, and `tccutil reset com.dai.notebookmlx`
+# matches nothing.
+#
+# The symptom is that the notebook list comes back empty while the app can still
+# write new notebooks to the same folder - `reload()` swallows the error from
+# `contentsOfDirectory` and shows an empty shelf, which reads as "there are no
+# notebooks" rather than "this app was not allowed to look".
+#
+# Ad-hoc, so the hash still changes on every build and macOS still treats each
+# build as a new app. That is the remaining cost of not having a signing
+# certificate, and it is a re-prompt rather than a silent denial.
+# Nested bundles first: signing the outer one fails with "code object is not
+# signed at all" while anything inside it is unsigned, and MLX ships a resource
+# bundle that SwiftPM copies in without signing.
+# The hardened runtime and a secure timestamp are both required for
+# notarisation, and only meaningful with a real certificate - an ad-hoc build
+# has nothing to timestamp against. No entitlements: dAI's agent signs the same
+# MLX stack this way and Apple notarises it, so Metal shader loading out of the
+# nested bundle works under library validation as long as both are signed by the
+# same team, which they are.
+if [ "$SIGN_AS" = "-" ]; then
+  HARDEN=()
+else
+  HARDEN=(--timestamp --options runtime)
+fi
+
+find "$APP/Contents/MacOS" -name '*.bundle' -maxdepth 1 -exec \
+  codesign --force "${HARDEN[@]}" --sign "$SIGN_AS" {} \;
+codesign --force "${HARDEN[@]}" --sign "$SIGN_AS" \
+  --identifier com.dai.notebookmlx "$APP"
+codesign --verify --strict --verbose=2 "$APP" 2>&1 | sed 's/^/    /'
+
+
 echo "$APP"

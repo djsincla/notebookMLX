@@ -307,6 +307,20 @@ final class NotebookModel {
     }
     private(set) var pending: Pending?
 
+    /// The answer that has just arrived, for whoever wants to act on arrival.
+    ///
+    /// Reading answers aloud needs the moment a question is answered, and
+    /// watching `turns` does not give it: opening a notebook fills `turns` with
+    /// yesterday's answers, and all of them would be read out. A fresh id per
+    /// answer is the event; `generated` is false for a retrieval-only turn,
+    /// whose "answer" is a count of passages and not worth saying.
+    struct Answered: Equatable {
+        let id = UUID()
+        let turn: NotebookPackage.Turn
+        let generated: Bool
+    }
+    private(set) var justAnswered: Answered?
+
     /// The question in flight, so it can be stopped.
     ///
     /// Held rather than fired and forgotten. A question takes seconds to answer
@@ -431,11 +445,13 @@ final class NotebookModel {
                 // asker cancelled is a record of something that did not happen.
                 try Task.checkCancellation()
                 try package.append(turn)
+                let generated = gateway != nil
                 await MainActor.run {
                     self?.turns.append(turn)
                     self?.pending = nil
                     self?.asking = false
                     self?.asked = nil
+                    self?.justAnswered = Answered(turn: turn, generated: generated)
                 }
             } catch is CancellationError {
                 // Already cleared by cancelAsk, and deliberately silent.

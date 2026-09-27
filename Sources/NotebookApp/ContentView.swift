@@ -1252,6 +1252,15 @@ struct AskBar: View {
     var cancel: (() -> Void)?
     /// Focus lives here so ⌘K can put the cursor in the field from anywhere.
     @FocusState private var writing: Bool
+    /// What dictation is doing, when it is doing anything.
+    @State private var voiceStatus: String?
+    /// Whether the words in the field were spoken, and whether the question
+    /// now being answered was. The second decides whether the answer is read
+    /// back under "When asked by voice".
+    @State private var dictated = false
+    @State private var askedByVoice = false
+    @State private var clears = 0
+    private var readAloud: ReadAloud { .shared }
 
     /// Asking needs both a notebook with chunks and a loaded model.
     private var canAsk: Bool {
@@ -1264,7 +1273,43 @@ struct AskBar: View {
               let embedder = embedding.ready(for: manifest.embeddingModel) else { return }
         let asked = question
         question = ""
+        askedByVoice = dictated
+        dictated = false
+        // A new question makes the last answer old news.
+        readAloud.stop()
         model.ask(asked, using: embedder, gateway: Self.gateway())
+    }
+
+    private func readBack(_ answered: NotebookModel.Answered?) {
+        guard let answered, answered.generated else { return }
+        switch VoiceSettings.readAloud {
+        case .never: return
+        case .whenSpoken: guard askedByVoice else { return }
+        case .always: break
+        }
+        readAloud.speak(answered.turn)
+    }
+
+    /// Words the recogniser should expect: the notebook's own source names, as
+    /// words rather than filenames. "vcf-9-1.pdf" is spoken as "VCF 9 1", never
+    /// as "vcf dash nine dash one dot pdf".
+    private var vocabulary: [String] {
+        model.activeSources.prefix(100).map {
+            ($0 as NSString).deletingPathExtension
+                .replacingOccurrences(of: "-", with: " ")
+                .replacingOccurrences(of: "_", with: " ")
+        }
+    }
+
+    @available(macOS 26, *)
+    private var talkerHost: Talker.Host {
+        Talker.Host(
+            text: $question,
+            fieldFocused: { writing },
+            focusField: { writing = true },
+            enabled: { canAsk },
+            vocabulary: { vocabulary },
+            dictated: { dictated = true })
     }
 
     /// The fleet, when one has been configured.
@@ -1323,12 +1368,43 @@ struct AskBar: View {
                         question = recalled
                         return .handled
                     }
+                // Inside the field, where every search box keeps it. A four line
+                // question - or a dictation that heard the radio - was cleared
+                // by selecting all and deleting, which is two shortcuts for the
+                // commonest correction there is.
+                if !question.isEmpty && !model.asking {
+                    Button {
+                        question = ""
+                        dictated = false
+                        clears += 1
+                        writing = true
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Palette.inkSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear the question")
+                }
+                if readAloud.speaking {
+                    Button { readAloud.stop() } label: {
+                        Image(systemName: "speaker.slash.fill").font(.title2)
+                            .foregroundStyle(Palette.inkSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Stop reading the answer")
+                }
+                // Present while a question is out, only disabled: taking it away
+                // would drop the keyboard monitor with it and build a new one,
+                // microphone state and all, every time a question was asked.
+                if #available(macOS 26, *) {
+                    DictateButton(host: talkerHost, status: $voiceStatus, clears: clears)
+                }
                 if model.asking {
                     // The same control, doing the opposite thing. A spinner
                     // here said "wait" and offered nothing; the only place
                     // somebody looks to take a question back is where they sent
                     // it from.
-                    Button { cancel?() } label: {
+                    Button { readAloud.stop(); cancel?() } label: {
                         Image(systemName: "stop.circle.fill")
                             .font(.title2)
                             .foregroundStyle(Palette.warning)
@@ -1359,7 +1435,10 @@ struct AskBar: View {
                 if case .warming = embedding.state {
                     ProgressView().controlSize(.small)
                 }
-                if let summary = embedding.summary {
+                if let voiceStatus {
+                    Text(voiceStatus).font(.caption).foregroundStyle(Palette.inkSecondary)
+                        .lineLimit(2)
+                } else if let summary = embedding.summary {
                     Text(summary).font(Type.provenance).foregroundStyle(Palette.inkSecondary)
                 }
                 if let detail = embedding.detail {
@@ -1384,6 +1463,10 @@ struct AskBar: View {
                 .opacity(0)
                 .accessibilityHidden(true)
         }
+        .onChange(of: model.justAnswered) { _, answered in readBack(answered) }
+        // A field cleared by hand holds nothing spoken any more, so whatever is
+        // typed next is a typed question.
+        .onChange(of: question) { _, now in if now.isEmpty { dictated = false } }
         .padding(.horizontal, Measure.pagePadding / 2)
         .padding(.vertical, 12)
         // The same column as the record above it, left aligned to the same

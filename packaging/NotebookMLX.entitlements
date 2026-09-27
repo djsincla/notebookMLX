@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Dictation. Under the hardened runtime a Developer ID build cannot open
+       the microphone without this, whatever the user answers: the prompt never
+       appears and the audio engine delivers silence. -->
+  <key>com.apple.security.device.audio-input</key><true/>
+</dict>
+</plist>

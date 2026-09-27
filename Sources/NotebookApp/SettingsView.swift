@@ -17,6 +17,9 @@ struct SettingsView: View {
     @State private var isDaiFleet: Bool?
     @State private var maxTokens = GatewaySettings.maxTokens
     @State private var appearance = Appearance.current
+    @State private var readAloud = VoiceSettings.readAloud
+    @State private var holdSpace = VoiceSettings.holdSpace
+    @State private var voiceID = VoiceSettings.voiceIdentifier
     @State private var available: [Gateway.Model] = []
     @State private var loadingModels = false
     @State private var modelsProblem: String?
@@ -189,6 +192,34 @@ struct SettingsView: View {
                      + "wait rather than a longer scroll, and a model that "
                      + "finishes early costs nothing extra.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Voice") {
+                // Written as they change, like the theme: these are felt on the
+                // next question, and a setting that only takes effect when the
+                // window closes is a setting that seems not to work.
+                Picker("Read answers aloud", selection: $readAloud) {
+                    ForEach(VoiceSettings.ReadAloud.allCases) { Text($0.label).tag($0) }
+                }
+                .onChange(of: readAloud) { _, new in VoiceSettings.readAloud = new }
+                Picker("Voice", selection: $voiceID) {
+                    Text("System default").tag("")
+                    ForEach(ReadAloud.voices(), id: \.identifier) { v in
+                        Text(ReadAloud.label(for: v)).tag(v.identifier)
+                    }
+                }
+                .onChange(of: voiceID) { _, new in VoiceSettings.voiceIdentifier = new }
+                if #available(macOS 26, *) {
+                    Toggle("Hold space in an empty Ask field to dictate", isOn: $holdSpace)
+                        .onChange(of: holdSpace) { _, new in VoiceSettings.holdSpace = new }
+                    Text("Speech is recognised on this Mac. The first dictation "
+                         + "downloads Apple's speech model once; your audio is "
+                         + "never sent anywhere. Better voices can be added in "
+                         + "System Settings › Accessibility › Spoken Content.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Dictation needs macOS 26. Answers can still be read aloud.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section("Credential") {
                 // Secure, and stored in the Keychain rather than in defaults: a

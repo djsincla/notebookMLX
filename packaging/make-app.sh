@@ -90,6 +90,13 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <!-- Regular, not accessory: it needs a Dock icon, a menu bar and focus. -->
   <key>LSUIElement</key><false/>
   <key>NSHighResolutionCapable</key><true/>
+  <!-- Dictation. Without these macOS refuses the microphone outright rather
+       than asking, and the reason shown in the prompt is the only explanation
+       anybody gets for why a notebook wants to listen. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>notebookMLX listens only while you hold space or click the microphone, to turn a spoken question into text. Recognition happens on this Mac.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Your spoken question is recognised on this Mac and never sent anywhere.</string>
   <!-- Reach a local OpenAI-compatible server over plain http.
        App Transport Security blocks http:// by default, which is right for the
        internet and wrong for the thing this app is now built to do: LM Studio
@@ -175,7 +182,7 @@ fi
 # bundle that SwiftPM copies in without signing.
 # The hardened runtime and a secure timestamp are both required for
 # notarisation, and only meaningful with a real certificate - an ad-hoc build
-# has nothing to timestamp against. No entitlements: dAI's agent signs the same
+# has nothing to timestamp against. No entitlements for MLX: dAI's agent signs the same
 # MLX stack this way and Apple notarises it, so Metal shader loading out of the
 # nested bundle works under library validation as long as both are signed by the
 # same team, which they are.
@@ -187,7 +194,12 @@ fi
 
 find "$APP/Contents/MacOS" -name '*.bundle' -maxdepth 1 -exec \
   codesign --force "${HARDEN[@]}" --sign "$SIGN_AS" {} \;
+# One entitlement, on the app only: the microphone, for dictation. The hardened
+# runtime denies audio input to anything not entitled to it, silently - the
+# prompt never appears and the recogniser hears nothing. The nested MLX bundle
+# records nothing and needs none.
 codesign --force "${HARDEN[@]}" --sign "$SIGN_AS" \
+  --entitlements "$ROOT/packaging/NotebookMLX.entitlements" \
   --identifier com.dai.notebookmlx "$APP"
 codesign --verify --strict --verbose=2 "$APP" 2>&1 | sed 's/^/    /'
 

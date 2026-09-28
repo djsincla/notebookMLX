@@ -24,15 +24,20 @@ final class Talker {
         /// Told when a dictation put words in the field, so the answer to that
         /// question can be read back.
         var dictated: () -> Void
+        /// Send what is in the field, as a spoken question.
+        var submit: () -> Void
     }
 
     let dictation = Dictation()
     /// Whether the current dictation is a held space, which changes what the
     /// status line tells somebody to do to stop it.
     private(set) var byHold = false
-    /// What was in the field when dictation started, kept so speech is added
-    /// to it and so Escape can put it back.
-    private(set) var typed = ""
+    /// What was in the field when dictation started - not added to, only kept
+    /// so that a tap, Escape or a dictation that heard nothing can put it back.
+    private(set) var before = ""
+    /// Whether this dictation is meant: set at once by the mic button, and by a
+    /// held space once the hold is certain. Until then the field is untouched.
+    private(set) var confirmed = false
 
     @ObservationIgnored var host: Host?
     @ObservationIgnored weak var window: NSWindow?
@@ -151,54 +156,71 @@ final class Talker {
 
     // ---------------------------------------------------------- dictating
 
-    /// The mic button: start, or stop and keep what was said.
+    /// The mic button: start, or stop and send what was said.
+    ///
+    /// Stopping from the button sends. Somebody who reached for the mouse to
+    /// end a dictation was going to reach for Return next; a held space stops
+    /// without sending, because letting go of a key is not a decision to ask.
     func toggle() {
-        dictation.isActive ? finish() : begin(byHold: false, confirmed: true)
+        dictation.isActive ? finish(send: true) : begin(byHold: false, confirmed: true)
     }
 
     private func begin(byHold: Bool, confirmed: Bool) {
         guard let host, !dictation.isActive else { return }
         self.byHold = byHold
-        typed = host.text.wrappedValue
+        self.confirmed = false
+        before = host.text.wrappedValue
         dictation.clearFailure()
         dictation.start(vocabulary: host.vocabulary())
         if confirmed { confirm() }
     }
 
+    /// The dictation is meant: a new question starts in an empty field.
+    ///
+    /// Cleared here rather than on the press, so a tap of space - which is also
+    /// a press - never blanks the field even for a moment.
     private func confirm() {
+        confirmed = true
         // Talking over the last answer is how somebody says they have heard
         // enough of it.
         ReadAloud.shared.stop()
+        host?.text.wrappedValue = ""
         host?.focusField()
     }
 
-    private func finish() {
+    private func finish(send: Bool = false) {
         guard let host else { return }
         Task {
             let spoken = await dictation.stop()
-            host.text.wrappedValue = LiveTranscript.compose(typed: typed, spoken: spoken)
-            if !spoken.isEmpty { host.dictated() }
-            host.focusField()
+            guard !spoken.isEmpty else {
+                // Nothing heard is not a reason to lose what was there.
+                host.text.wrappedValue = before
+                host.focusField()
+                return
+            }
+            host.text.wrappedValue = spoken
+            host.dictated()
+            if send { host.submit() } else { host.focusField() }
         }
     }
 
     private func discard() {
         dictation.cancel()
-        host?.text.wrappedValue = typed
+        host?.text.wrappedValue = before
     }
 
     /// The field was cleared. A dictation still running would write straight
-    /// back into it, so it is stopped, and what was typed before it is gone too.
+    /// back into it, so it is stopped, and nothing is put back.
     func cleared() {
         guard dictation.isActive else { return }
-        typed = ""
+        before = ""
         discard()
     }
 
     /// Live text for the field while dictation is running.
     func show(_ transcript: LiveTranscript) {
-        guard dictation.isActive, let host else { return }
-        host.text.wrappedValue = LiveTranscript.compose(typed: typed, spoken: transcript.text)
+        guard dictation.isActive, confirmed, let host else { return }
+        host.text.wrappedValue = transcript.text
     }
 
     /// What the Ask bar's status line says, if anything.
@@ -207,7 +229,7 @@ final class Talker {
         case .idle: nil
         case .preparing(let why): why
         case .listening: byHold ? "Listening… let go of space to stop, Esc to discard."
-                                : "Listening… click the microphone to stop."
+                                : "Listening… click the microphone to send."
         case .finishing: "Finishing…"
         case .failed(let why): why
         }
@@ -238,7 +260,7 @@ struct DictateButton: View {
         .buttonStyle(.plain)
         .disabled(!host.enabled() && !talker.dictation.isActive)
         .help(talker.dictation.isActive
-              ? "Stop listening"
+              ? "Stop listening and ask"
               : (VoiceSettings.holdSpace ? "Dictate a question (or hold space in the empty field)"
                                          : "Dictate a question"))
         .background(WindowReader { talker.window = $0 })

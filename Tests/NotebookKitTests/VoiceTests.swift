@@ -96,14 +96,6 @@ struct LiveTranscriptTests {
         #expect(t.text == "How do I add a host? To the cluster.")
         #expect(t.volatile.isEmpty)
     }
-
-    @Test("dictation adds to what was typed rather than replacing it")
-    func compose() {
-        #expect(LiveTranscript.compose(typed: "In the manual, ", spoken: "how do I add a host?")
-                == "In the manual, how do I add a host?")
-        #expect(LiveTranscript.compose(typed: "", spoken: "hello") == "hello")
-        #expect(LiveTranscript.compose(typed: "typed", spoken: "") == "typed")
-    }
 }
 
 /// Space is both a character and the talk key; these are the ways it can go.

@@ -26,16 +26,6 @@ public struct LiveTranscript: Equatable, Sendable {
     /// Everything heard, finals first and the current guess after them.
     public var text: String { Self.join(finalized, volatile) }
 
-    /// What goes in the field: anything typed before dictation started, then
-    /// what was said.
-    ///
-    /// The typed part is kept as it was. Dictation started from the mic button
-    /// with half a question already written is adding to that question, and
-    /// replacing it would throw away the half somebody took the trouble to type.
-    public static func compose(typed: String, spoken: String) -> String {
-        join(typed, spoken)
-    }
-
     static func join(_ a: String, _ b: String) -> String {
         let left = a.trimmingCharacters(in: .whitespacesAndNewlines)
         let right = b.trimmingCharacters(in: .whitespacesAndNewlines)

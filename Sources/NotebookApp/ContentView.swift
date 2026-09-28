@@ -1268,12 +1268,15 @@ struct AskBar: View {
         return model.canAsk && embedding.ready(for: manifest.embeddingModel) != nil
     }
 
-    private func ask() {
+    /// `byVoice` is said outright by a dictation that sends as it stops: the
+    /// flag it would otherwise set is written in the same moment, and a state
+    /// write is not something to race a read against.
+    private func ask(byVoice: Bool? = nil) {
         guard canAsk, let manifest = model.manifest,
               let embedder = embedding.ready(for: manifest.embeddingModel) else { return }
         let asked = question
         question = ""
-        askedByVoice = dictated
+        askedByVoice = byVoice ?? dictated
         dictated = false
         // A new question makes the last answer old news.
         readAloud.stop()
@@ -1309,7 +1312,8 @@ struct AskBar: View {
             focusField: { writing = true },
             enabled: { canAsk },
             vocabulary: { vocabulary },
-            dictated: { dictated = true })
+            dictated: { dictated = true },
+            submit: { ask(byVoice: true) })
     }
 
     /// The fleet, when one has been configured.
@@ -1348,7 +1352,7 @@ struct AskBar: View {
                     .lineLimit(1 ... 4)
                     .font(.body)
                     .disabled(!canAsk)
-                    .onSubmit(ask)
+                    .onSubmit { ask() }
                     .focused($writing)
                     // Up and down walk back through what was asked before, the
                     // way a shell does. `QuestionHistory` decides whether the

@@ -16,6 +16,14 @@ final class ReadAloud {
 
     private(set) var speaking = false
 
+    /// Muted means nothing is read, and whatever is being read stops.
+    var muted = VoiceSettings.muted {
+        didSet {
+            VoiceSettings.muted = muted
+            if muted { stop() }
+        }
+    }
+
     @ObservationIgnored private let synthesizer = AVSpeechSynthesizer()
     @ObservationIgnored private let watcher = Watcher()
 
@@ -28,6 +36,7 @@ final class ReadAloud {
 
     /// Read a turn's answer, citations and markdown removed.
     func speak(_ turn: NotebookPackage.Turn) {
+        guard !muted else { return }
         let text = SpeakableText.from(answer: turn.answer,
                                       citations: turn.citations.map(\.citation))
         guard !text.isEmpty else { return }

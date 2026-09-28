@@ -4,18 +4,19 @@ import Foundation
 /// `GatewaySettings`.
 enum VoiceSettings {
 
-    /// When an answer is read aloud.
+    /// Which answers are read aloud, when not muted.
     ///
-    /// Three states rather than a switch, because the useful default is neither
-    /// on nor off. Somebody who spoke a question is usually not looking at the
-    /// screen and wants the answer spoken back; somebody who typed one is
-    /// reading already, and a voice starting up unasked is an interruption.
+    /// Somebody who spoke a question is usually not looking at the screen and
+    /// wants the answer spoken back; somebody who typed one is reading already,
+    /// and a voice starting up unasked is an interruption. Whether anything is
+    /// read at all is the speaker button's job, not this setting's: "Never" was
+    /// a third option here, and a mute somebody could only reach through
+    /// Settings was a mute nobody reached for mid-answer.
     enum ReadAloud: String, CaseIterable, Identifiable {
-        case never, whenSpoken, always
+        case whenSpoken, always
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .never: "Never"
             case .whenSpoken: "When asked by voice"
             case .always: "Always"
             }
@@ -28,6 +29,19 @@ enum VoiceSettings {
                 .flatMap(ReadAloud.init(rawValue:)) ?? .whenSpoken
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: "voice.readAloud") }
+    }
+
+    /// The speaker button in the Ask bar. Kept across launches: somebody who
+    /// muted the app in a shared office wants it still muted tomorrow.
+    ///
+    /// Anybody who had chosen "Never" before the button existed starts muted,
+    /// which is what that choice meant.
+    static var muted: Bool {
+        get {
+            if let set = UserDefaults.standard.object(forKey: "voice.muted") as? Bool { return set }
+            return UserDefaults.standard.string(forKey: "voice.readAloud") == "never"
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "voice.muted") }
     }
 
     /// Whether holding space in an empty Ask field dictates. On by default: it

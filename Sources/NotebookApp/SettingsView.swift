@@ -201,6 +201,8 @@ struct SettingsView: View {
                     ForEach(VoiceSettings.ReadAloud.allCases) { Text($0.label).tag($0) }
                 }
                 .onChange(of: readAloud) { _, new in VoiceSettings.readAloud = new }
+                Text("The speaker button beside the Ask field mutes and unmutes.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Picker("Voice", selection: $voiceID) {
                     Text("System default").tag("")
                     ForEach(ReadAloud.voices(), id: \.identifier) { v in

@@ -1286,7 +1286,6 @@ struct AskBar: View {
     private func readBack(_ answered: NotebookModel.Answered?) {
         guard let answered, answered.generated else { return }
         switch VoiceSettings.readAloud {
-        case .never: return
         case .whenSpoken: guard askedByVoice else { return }
         case .always: break
         }
@@ -1389,14 +1388,21 @@ struct AskBar: View {
                     .buttonStyle(.plain)
                     .help("Clear the question")
                 }
-                if readAloud.speaking {
-                    Button { readAloud.stop() } label: {
-                        Image(systemName: "speaker.slash.fill").font(.title2)
-                            .foregroundStyle(Palette.inkSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Stop reading the answer")
+                // Always here, not only while an answer is being read. It
+                // appeared only mid-answer, which meant the time to decide
+                // answers should be silent was after one had started talking.
+                Button { readAloud.muted.toggle() } label: {
+                    Image(systemName: readAloud.muted ? "speaker.slash.fill"
+                                                      : "speaker.wave.2.fill")
+                        .font(.title2)
+                        .foregroundStyle(readAloud.speaking ? Palette.accent
+                                                            : Palette.inkSecondary)
+                        .symbolEffect(.variableColor.iterative, isActive: readAloud.speaking)
+                        .contentTransition(.symbolEffect(.replace))
                 }
+                .buttonStyle(.plain)
+                .help(readAloud.muted ? "Unmute: read answers aloud"
+                      : readAloud.speaking ? "Stop reading and mute" : "Mute answers")
                 // Present while a question is out, only disabled: taking it away
                 // would drop the keyboard monitor with it and build a new one,
                 // microphone state and all, every time a question was asked.

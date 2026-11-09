@@ -36,7 +36,7 @@ let package = Package(
         // pins that have to match, and nothing about a mismatch is loud, so a
         // test asserts the two Package.resolved files name the same revision.
         .package(url: "https://github.com/djsincla/mlx-swift-examples.git",
-                 revision: "7d86f26988c9d48ec703ec1828906be2ad6f875c"),
+                 revision: "6090aa0791f8994d0488ec9248f33b7534ce9e5b"),
     ],
     targets: [
         .target(name: "NotebookKit", dependencies: [
